@@ -20,9 +20,8 @@
         .message-wrapper.user { align-self: flex-end; flex-direction: row-reverse; }
         .message-wrapper.ai { align-self: flex-start; }
         
-        /* アバターアイコン */
-        .avatar { width: 42px; height: 42px; border-radius: 50%; background-color: white; flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .avatar img { width: 100%; height: 100%; object-fit: cover; }
+        /* テキストベースのアバターアイコン */
+        .avatar { width: 46px; height: 46px; border-radius: 50%; background-color: white; flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 22px; line-height: 1; white-space: nowrap;}
         
         /* 吹き出しの中身を縦に並べる用（名前と吹き出し） */
         .ai-content { display: flex; flex-direction: column; gap: 4px; }
@@ -30,7 +29,7 @@
         
         /* 吹き出しのデザイン */
         .bubble { padding: 10px 16px; border-radius: 18px; line-height: 1.5; font-size: 0.95em; position: relative; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
-        .message-wrapper.user .bubble { background: #8de055; color: #111; border-top-right-radius: 4px; } /* LINEの緑色 */
+        .message-wrapper.user .bubble { background: #8de055; color: #111; border-top-right-radius: 4px; }
         .message-wrapper.ai .bubble { background: white; color: #1c1e21; border-top-left-radius: 4px; }
         
         /* Markdown内のスタイル調整 */
@@ -50,7 +49,7 @@
         .drop-zone { border: 2px dashed #6C5CE7; background: #f3f0ff; padding: 30px 20px; text-align: center; border-radius: 8px; cursor: pointer; color: #6C5CE7; font-weight: bold; transition: all 0.2s;}
         .drop-zone.dragover { background: #6C5CE7; color: white;}
         label { font-weight: bold; font-size: 0.85em; color: #555; margin-bottom: 4px; display: block;}
-        input[type="password"], select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px;}
+        input[type="password"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px;}
         .title { margin: 0 0 10px 0; color: #6C5CE7; font-size: 1.5em; text-align: center;}
     </style>
 </head>
@@ -64,13 +63,10 @@
             <input type="password" id="api-key" placeholder="APIトークンを入力">
         </div>
 
-        <div>
-            <label>使用モデル (Model)</label>
-            <select id="model-select">
-                <option value="llm-jp-3.1-8x13b-instruct4">【日本語/キャラ特化】llm-jp-3.1-8x13b</option>
-                <option value="Qwen3-Coder-480B-A35B-Instruct-FP8">【コード/論理特化】Qwen3-Coder-480B</option>
-                <option value="gpt-oss-120b">【汎用バランス】gpt-oss-120b</option>
-            </select>
+        <div style="font-size: 0.85em; color: #555; background: #eef; padding: 10px; border-radius: 6px;">
+            <strong>固定モデル:</strong><br>
+            llm-jp-3.1-8x13b-instruct4<br>
+            <span style="font-size: 0.9em; color: #777;">(キャラロールプレイに最適化)</span>
         </div>
         
         <div id="drop-zone" class="drop-zone">
@@ -95,7 +91,6 @@
 
     <script>
         const apiKeyInput = document.getElementById('api-key');
-        const modelSelect = document.getElementById('model-select');
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
         const zineInfo = document.getElementById('zine-info');
@@ -106,19 +101,16 @@
         let systemPrompt = "";
         let chatHistory = [];
         let characterName = "System";
-        let characterAvatarUrl = "https://api.dicebear.com/7.x/bottts/svg?seed=System";
+        let characterIcon = "🤖";
 
         // 初期メッセージの表示
         addMessage("左側のエリアに「カートリッジファイル(.md)」をドラッグ＆ドロップして、キャラクターを召喚してください。", "ai");
 
-        // トークンとモデルをローカルストレージから復元
+        // トークンをローカルストレージから復元
         const savedKey = localStorage.getItem('sakura_api_key');
         if(savedKey) apiKeyInput.value = savedKey;
-        const savedModel = localStorage.getItem('sakura_model');
-        if(savedModel) modelSelect.value = savedModel;
 
         apiKeyInput.addEventListener('change', () => localStorage.setItem('sakura_api_key', apiKeyInput.value));
-        modelSelect.addEventListener('change', () => localStorage.setItem('sakura_model', modelSelect.value));
 
         // ドラッグ＆ドロップ処理
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -143,24 +135,27 @@
                 // MDファイルからキャラクター名（最初の# タイトル）を抽出
                 const titleMatch = systemPrompt.match(/^#\s+(.+)$/m);
                 if (titleMatch) {
-                    // "Zine: " や "Cartridge: " などのプレフィックスを取り除く
                     characterName = titleMatch[1].replace(/^(Zine:|Cartridge:)\s*/i, '').trim();
                 } else {
-                    // タイトルがない場合はファイル名を使用
                     characterName = file.name.replace(/\.[^/.]+$/, "");
                 }
                 
-                // キャラクター名からユニークなアバター画像を自動生成 (DiceBear API)
-                characterAvatarUrl = `https://api.dicebear.com/7.x/fun-emoji/svg?seed=${encodeURIComponent(characterName)}`;
+                // MDファイルからアイコン（Icon: 〇〇）を抽出。絵文字やアスキーアートに対応。
+                const iconMatch = systemPrompt.match(/^Icon:\s*(.+)$/m);
+                if (iconMatch) {
+                    characterIcon = iconMatch[1].trim();
+                } else {
+                    characterIcon = "🤖"; // デフォルト
+                }
 
-                zineInfo.innerHTML = `挿入中のカートリッジ:<br><strong style="color:#6C5CE7;">${characterName}</strong>`;
+                zineInfo.innerHTML = `挿入中のカートリッジ:<br><strong style="color:#6C5CE7;">${characterName}</strong><br><span style="font-size:24px;">${characterIcon}</span>`;
                 userInput.disabled = false;
                 sendBtn.disabled = false;
                 
                 messagesDiv.innerHTML = ''; // 履歴リセット
                 chatHistory = [{ role: 'system', content: systemPrompt }];
                 
-                addMessage(`【${characterName}】をロードしました！\n現在のモデル: ${modelSelect.options[modelSelect.selectedIndex].text}`, 'ai');
+                addMessage(`【${characterName}】をロードしました！\nモデル: llm-jp-3.1-8x13b-instruct4`, 'ai');
             };
             reader.readAsText(file);
         }
@@ -174,9 +169,7 @@
                 // AI側のレイアウト（アイコン＋名前＋吹き出し）
                 const avatar = document.createElement('div');
                 avatar.className = 'avatar';
-                const avatarImg = document.createElement('img');
-                avatarImg.src = characterAvatarUrl;
-                avatar.appendChild(avatarImg);
+                avatar.textContent = characterIcon; // アスキーアートや絵文字を直接テキストで表示
                 wrapper.appendChild(avatar);
 
                 const contentCol = document.createElement('div');
@@ -234,7 +227,7 @@
                         'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify({
-                        model: modelSelect.value,
+                        model: 'llm-jp-3.1-8x13b-instruct4',
                         messages: chatHistory,
                         max_tokens: 800,
                         temperature: 0.7
