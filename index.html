@@ -74,6 +74,86 @@
         /* バージョン表示 */
         #version-tag { position: absolute; bottom: 5px; right: 10px; font-size: 0.7em; color: #aaa; pointer-events: none; z-index: 5;}
 
+        /* 画像切り抜きモーダル */
+        #crop-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            z-index: 2000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        #crop-modal.active {
+            display: flex;
+        }
+        #crop-container {
+            position: relative;
+            display: inline-block;
+            max-width: 90vw;
+            max-height: 70vh;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        #crop-source-img {
+            display: block;
+            max-width: 90vw;
+            max-height: 70vh;
+            object-fit: contain;
+        }
+        #crop-overlay {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            cursor: crosshair;
+            pointer-events: auto;
+        }
+        #crop-selection {
+            position: absolute;
+            border: 2px dashed #6C5CE7;
+            background: transparent;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.4);
+            pointer-events: none !important;
+        }
+        #crop-handle {
+            position: absolute;
+            width: 14px; height: 14px;
+            background: #6C5CE7;
+            border: 2px solid white;
+            border-radius: 50%;
+            pointer-events: none;
+            bottom: -7px; right: -7px;
+        }
+        #crop-header {
+            color: white;
+            font-size: 1.1em;
+            margin-bottom: 16px;
+            text-align: center;
+        }
+        #crop-actions {
+            margin-top: 16px;
+            display: flex;
+            gap: 10px;
+        }
+        #crop-actions button {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 24px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.95em;
+        }
+        #crop-apply-btn {
+            background: #6C5CE7;
+            color: white;
+        }
+        #crop-cancel-btn {
+            background: #555;
+            color: white;
+        }
+
         #settings-btn { 
             display: none; 
         }
@@ -85,15 +165,28 @@
                 bottom: 0; 
                 left: 0; 
                 width: 100%; 
-                height: 80vh; 
+                height: 100%; 
+                max-height: 100vh; 
                 order: 2; 
                 border-radius: 20px 20px 0 0; 
                 border-top: 1px solid #eee; 
                 box-shadow: 0 -4px 15px rgba(0,0,0,0.1); 
                 transform: translateY(100%); 
                 z-index: 1000;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                padding: 20px;
+                padding-bottom: env(safe-area-inset-bottom, 20px);
             }
             #sidebar.open { transform: translateY(0); }
+            #sidebar.mobile-popup { 
+                height: 100%; 
+                max-height: 100vh; 
+                border-radius: 0; 
+            }
+            #sidebar > div:first-child { flex-shrink: 0; }
+            #sidebar > div:last-child { flex-shrink: 0; }
             #chat-container { width: 100%; height: 100%; border-radius: 0; box-shadow: none; }
             #settings-btn { display: flex; }
         }
@@ -101,64 +194,88 @@
 </head>
 <body>
     <div id="sidebar">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
             <h2 class="title" style="margin: 0; text-align: left;">🎮 AI Cartridge Player</h2>
             <button id="close-sidebar" style="background: none; border: none; font-size: 20px; cursor: pointer; padding: 0; display: none;">✕</button>
         </div>
-        <p style="font-size: 0.8em; color: #666; margin-top: -10px; text-align: center;">Personal AI Console</p>
-        
-        <div>
+      
+        <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
             <label>さくらのAI Engine トークン</label>
             <input type="password" id="api-key" placeholder="APIトークンを入力">
-        </div>
 
-        <!-- 背景のカスタマイズ -->
-        <div class="control-group">
-            <h3>🎨 背景カスタマイズ</h3>
-            <div style="display: flex; gap: 8px; align-items: center;">
-                <input type="color" id="bg-color-picker" value="#f0f2f5" style="width: 32px; height: 32px; padding: 0; border: none; cursor: pointer;" title="背景色">
-                <button class="btn-small" id="bg-image-btn" title="背景画像を選択">🖼️ 画像</button>
-                <button class="btn-small" id="bg-reset-btn" title="初期状態に戻す">リセット</button>
-        </div>
+            <!-- 背景のカスタマイズ -->
+            <div class="control-group">
+                <h3>🎨 背景カスタマイズ</h3>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <input type="color" id="bg-color-picker" value="#f0f2f5" style="width: 32px; height: 32px; padding: 0; border: none; cursor: pointer;" title="背景色">
+                    <button class="btn-small" id="bg-image-btn" title="背景画像を選択">🖼️ 画像</button>
+                    <button class="btn-small" id="bg-reset-btn" title="初期状態に戻す">リセット</button>
+                </div>
+                <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 5px;">
+                    <label style="font-size: 0.75em;">画像の透明度</label>
+                    <input type="range" id="bg-opacity-slider" min="0" max="100" value="100" style="width: 100%;">
+                </div>
+            </div>
 
-        <div class="control-group">
-            <h3>🔊 音声読み上げ</h3>
-            <label><input type="checkbox" id="tts-toggle"> 有効にする</label>
-            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 5px;">
-                <label style="font-size: 0.75em;">モデル</label>
-                <select id="tts-model" style="width: 100%; padding: 4px; font-size: 0.8em;">
-                    <option value="zundamon">ずんだもん</option>
-                    <option value="ankomon">あんこもん</option>
-                    <option value="shikokumetan">四国めたん</option>
-                    <option value="kasukabetsumugi">春日部つむぎ</option>
-                    <option value="meimeihimari">冥鳴ひまり</option>
-                    <option value="tohokuitako">東北イタコ</option>
-                    <option value="tohokukiritan">東北きりたん</option>
-                    <option value="tohokuzunko">東北ずん子</option>
-                </select>
+            <div class="control-group">
+                <h3>🔊 音声読み上げ</h3>
+                <label><input type="checkbox" id="tts-toggle"> 有効にする</label>
+                <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 5px;">
+                    <label style="font-size: 0.75em;">モデル</label>
+                    <select id="tts-model" style="width: 100%; padding: 4px; font-size: 0.8em;">
+                        <option value="zundamon">ずんだもん</option>
+                        <option value="ankomon">あんこもん</option>
+                        <option value="shikokumetan">四国めたん</option>
+                        <option value="kasukabetsumugi">春日部つむぎ</option>
+                        <option value="meimeihimari">冥鳴ひまり</option>
+                        <option value="tohokuitako">東北イタコ</option>
+                        <option value="tohokukiritan">東北きりたん</option>
+                        <option value="tohokuzunko">東北ずん子</option>
+                    </select>
+                </div>
+                <div id="tts-credits" style="font-size:0.7em; color:#666; text-align:center; margin-top:10px;">© <a href="https://zunko.jp/con_ongen_kiyaku.html" target="_blank">Zunko</a> | <a href="https://tsumugi-official.studio.site/rule" target="_blank">Tsumugi</a> | <a href="https://www.meimeihimari.com/terms-of-use" target="_blank">Meimei Himari</a></div>
+            </div>
+           
+            <div id="drop-zone" class="drop-zone">
+                ここに カートリッジ(.md) を<br>ドラッグ＆ドロップ<br>
+            </div>
+            
+            <div id="zine-info" class="control-group" style="text-align: center;">
+                <h3>挿入中のカートリッジ</h3>
+                <strong>なし</strong>
+            </div>
+            <div class="control-group">
+                <h3>💾 会話データ</h3>
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <button class="btn-small" id="export-data-btn">エクスポート</button>
+                    <button class="btn-small" id="import-data-btn">インポート</button>
+                    <button class="btn-small" id="clear-data-btn" style="background: #ff6b6b; color: white;">全データ削除</button>
+                </div>
+                <input type="file" id="import-file-input" style="display: none;" accept=".json">
             </div>
         </div>
-            <input type="file" id="bg-image-input" style="display: none;" accept="image/*">
-        </div>
 
-
-        
-        <div id="drop-zone" class="drop-zone">
-            ここに カートリッジ(.md) を<br>ドラッグ＆ドロップ<br>
-        </div>
-        
-        <div id="zine-info" class="control-group" style="text-align: center;">
-            <h3>挿入中のカートリッジ</h3>
-            <strong>なし</strong>
-        </div>
-        
-        <input type="file" id="file-input" style="display: none;" accept=".md,.txt,.cartridge,.zine">
-        <input type="file" id="avatar-input" style="display: none;" accept="image/*">
-    <div id="credits" style="font-size:0.7em; color:#666; text-align:center; margin-top:10px;">© <a href="https://zunko.jp/con_ongen_kiyaku.html" target="_blank">Zunko</a> | <a href="https://tsumugi-official.studio.site/rule" target="_blank">Tsumugi</a> | <a href="https://www.meimeihimari.com/terms-of-use" target="_blank">Meimei Himari</a></div>
-</div>
+        <div id="sidebar-version" style="font-size:0.7em; color:#aaa; text-align:center; padding:8px 0 4px; flex-shrink: 0;">v1.12</div>
+    </div>
     
+    <input type="file" id="file-input" style="display: none;" accept=".md,.txt,.cartridge,.zine">
+    <input type="file" id="avatar-input" style="display: none;" accept="image/*">
+    <input type="file" id="bg-image-input" style="display: none;" accept="image/*">
+        
+    <!-- 画像切り抜きモーダル -->
+    <div id="crop-modal">
+        <div id="crop-header">画像をドラッグして切り抜き範囲を選択</div>
+        <div id="crop-container">
+            <img id="crop-source-img" src="" alt="Crop">
+            <canvas id="crop-overlay"></canvas>
+        </div>
+        <div id="crop-actions">
+            <button id="crop-cancel-btn">キャンセル</button>
+            <button id="crop-apply-btn">適用</button>
+        </div>
+    </div>
+
     <div id="chat-container">
-        <div id="version-tag">ver 1.12</div>
         <div id="messages">
             <!-- 初期メッセージ -->
         </div>
@@ -200,12 +317,33 @@
         }
         window.addEventListener('resize', updateSidebarUI);
         updateSidebarUI();
+        updateSidebarUI();
         
         // 背景カスタマイズ要素
         const bgColorPicker = document.getElementById('bg-color-picker');
         const bgImageBtn = document.getElementById('bg-image-btn');
         const bgImageInput = document.getElementById('bg-image-input');
         const bgResetBtn = document.getElementById('bg-reset-btn');
+        const bgOpacitySlider = document.getElementById('bg-opacity-slider');
+
+        // 画像切り抜き用要素
+        const cropModal = document.getElementById('crop-modal');
+        const cropSourceImg = document.getElementById('crop-source-img');
+        const cropOverlay = document.getElementById('crop-overlay');
+        const cropApplyBtn = document.getElementById('crop-apply-btn');
+        const cropCancelBtn = document.getElementById('crop-cancel-btn');
+        
+        // 会話データ管理
+        const exportDataBtn = document.getElementById('export-data-btn');
+        const importDataBtn = document.getElementById('import-data-btn');
+        const importFileInput = document.getElementById('import-file-input');
+        const clearDataBtn = document.getElementById('clear-data-btn');
+        
+        let cropTarget = 'background'; // 'avatar' または 'background'
+        let cropImageSrc = '';
+        let isDragging = false;
+        let cropStartX = 0, cropStartY = 0;
+        let cropEndX = 0, cropEndY = 0;
 
         let systemPrompt = "";
         let chatHistory = [];
@@ -235,7 +373,7 @@
 
         const META_PROMPT = `\n\n【システムからの絶対遵守命令】\n1. あなたはAIアシスタントではありません。上記の設定されたキャラクターとして完全に振る舞ってください。\n2. ユーザーの質問に対して、長く説明しすぎないでください。回答は必ず3文以内で、キャラクター特有の口調のみを使用してください。\n3. 「申し訳ありません」や「AIとして〜」といった発言は絶対に禁止します。`;
 
-        addMessage("左側のエリアに「カートリッジファイル(.md)」をドラッグ＆ドロップして、キャラクターを召喚してください。", "ai");
+        addMessage("カートリッジファイル(.md)をドラッグ＆ドロップして、キャラクターを召喚してください。", "ai");
 
         const savedKey = localStorage.getItem('sakura_api_key');
         if(savedKey) apiKeyInput.value = savedKey;
@@ -252,47 +390,142 @@
         if (savedBgImage) {
             messagesDiv.style.backgroundImage = `url(${savedBgImage})`;
         }
+        
+        const savedBgOpacity = localStorage.getItem('cartridge_bg_opacity');
+        if (savedBgOpacity) {
+            bgOpacitySlider.value = savedBgOpacity;
+            messagesDiv.style.opacity = savedBgOpacity / 100;
+        }
 
         bgColorPicker.addEventListener('input', (e) => {
             messagesDiv.style.backgroundColor = e.target.value;
             localStorage.setItem('cartridge_bg_color', e.target.value);
         });
 
-        bgImageBtn.addEventListener('click', () => bgImageInput.click());
+        bgOpacitySlider.addEventListener('input', (e) => {
+            const opacity = e.target.value / 100;
+            messagesDiv.style.opacity = opacity;
+            localStorage.setItem('cartridge_bg_opacity', e.target.value);
+        });
+
+        bgImageBtn.addEventListener('click', () => {
+            cropTarget = 'background';
+            bgImageInput.click();
+        });
 
         bgImageInput.addEventListener('change', (e) => {
             if (e.target.files && e.target.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
-                    const b64 = evt.target.result;
-                    messagesDiv.style.backgroundImage = `url(${b64})`;
-                    localStorage.setItem('cartridge_bg_image', b64);
+                    cropImageSrc = evt.target.result;
+                    openCropModal('background');
                 }
                 reader.readAsDataURL(e.target.files[0]);
+                e.target.value = '';
             }
         });
 
         bgResetBtn.addEventListener('click', () => {
             messagesDiv.style.backgroundImage = 'none';
             messagesDiv.style.backgroundColor = '#f0f2f5';
+            messagesDiv.style.opacity = 1;
             bgColorPicker.value = '#f0f2f5';
+            bgOpacitySlider.value = '100';
             localStorage.removeItem('cartridge_bg_image');
             localStorage.setItem('cartridge_bg_color', '#f0f2f5');
+            localStorage.setItem('cartridge_bg_opacity', '100');
         });
         // ------------------------------
+
+        // IndexedDB
+        const DB_NAME = 'ZineAIChatDB';
+        const DB_STORE = 'messages';
+        const DB_VERSION = 1;
+        let db = null;
+        const charId = 'current_character_' + Date.now(); // キャラクター識別子
+
+        // IndexedDB 初期化
+        function initDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                    const database = e.target.result;
+                    if (!database.objectStoreNames.contains(DB_STORE)) {
+                        const store = database.createObjectStore(DB_STORE, { keyPath: 'id' });
+                        store.createIndex('charId', 'charId', { unique: false });
+                    }
+                };
+                request.onsuccess = (e) => {
+                    db = e.target.result;
+                    resolve(db);
+                };
+                request.onerror = (e) => {
+                    reject(e.target.error);
+                };
+            });
+        }
+
+        // IndexedDBに保存
+        function saveToDB(message) {
+            return new Promise((resolve, reject) => {
+                if (!db) return reject('DB not initialized');
+                const transaction = db.transaction([DB_STORE], 'readwrite');
+                const store = transaction.objectStore(DB_STORE);
+                store.add(message);
+                transaction.oncomplete = () => resolve();
+                transaction.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // キャラクターIDで取得
+        function getFromDB(charId) {
+            return new Promise((resolve, reject) => {
+                if (!db) return reject('DB not initialized');
+                const transaction = db.transaction([DB_STORE], 'readonly');
+                const store = transaction.objectStore(DB_STORE);
+                const index = store.index('charId');
+                const request = index.getAll(charId);
+                request.onsuccess = () => resolve(request.result || []);
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // キャラクターIDで削除
+        function deleteFromDB(charId) {
+            return new Promise((resolve, reject) => {
+                if (!db) return reject('DB not initialized');
+                const transaction = db.transaction([DB_STORE], 'readwrite');
+                const store = transaction.objectStore(DB_STORE);
+                const index = store.index('charId');
+                const request = index.getAll(charId);
+                request.onsuccess = () => {
+                    const records = request.result;
+                    const deleteTx = db.transaction([DB_STORE], 'readwrite');
+                    const deleteStore = deleteTx.objectStore(DB_STORE);
+                    records.forEach(record => deleteStore.delete(record.id));
+                    deleteTx.oncomplete = () => resolve();
+                    deleteTx.onerror = (e) => reject(e.target.error);
+                };
+                request.onerror = (e) => reject(e.target.error);
+            });
+        }
+
+        // ページ読み込み時にIndexedDBを初期化
+        initDB().then(() => {
+            console.log('IndexedDB initialized');
+        }).catch(err => {
+            console.error('IndexedDB initialization failed:', err);
+        });
 
         avatarInput.addEventListener('change', (e) => {
             if (e.target.files && e.target.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
-                    customAvatarImg = evt.target.result;
-                    const sidebarAvatar = document.getElementById('sidebar-avatar');
-                    if(sidebarAvatar) {
-                        sidebarAvatar.innerHTML = `<img src="${customAvatarImg}" alt="Avatar">`;
-                    }
-                    addMessage("システム：アイコン画像を更新しました。", "ai");
+                    cropImageSrc = evt.target.result;
+                    openCropModal('avatar');
                 }
                 reader.readAsDataURL(e.target.files[0]);
+                e.target.value = '';
             }
         });
 
@@ -339,15 +572,245 @@
 
                 userInput.disabled = false;
                 sendBtn.disabled = false;
-                micBtn.disabled = false;
                 
                 messagesDiv.innerHTML = ''; 
                 chatHistory = [{ role: 'system', content: systemPrompt + META_PROMPT }];
                 
-                addMessage(`【${characterName}】をロードしました！\nモデル: gpt-oss-120b`, 'ai');
+                addMessage(`【${characterName}】をロードしました！`, 'ai');
             };
             reader.readAsText(file);
         }
+
+        // ----- 画像切り抜きロジック -----
+        let cropCanvasCtx = null;
+
+        function openCropModal(target) {
+            cropTarget = target;
+            cropSourceImg.src = cropImageSrc;
+            cropSourceImg.onload = () => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        const w = cropSourceImg.clientWidth;
+                        const h = cropSourceImg.clientHeight;
+                        if (w > 0 && h > 0) {
+                            cropOverlay.width = w;
+                            cropOverlay.height = h;
+                            cropOverlay.style.width = w + 'px';
+                            cropOverlay.style.height = h + 'px';
+                            cropCanvasCtx = cropOverlay.getContext('2d');
+                        }
+                    });
+                });
+                if (cropTarget === 'avatar') {
+                    document.getElementById('crop-header').textContent = 'アイコン用に四角くドラッグして選択';
+                } else {
+                    document.getElementById('crop-header').textContent = '画像をドラッグして切り抜き範囲を選択';
+                }
+            };
+            cropModal.classList.add('active');
+        }
+
+        function closeCropModal() {
+            cropModal.classList.remove('active');
+        }
+
+        // Helper functions for cropping
+        function getPos(e) {
+            const r = cropOverlay.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: cx - r.left, y: cy - r.top };
+        }
+
+        function clampRect(x, y, w, h) {
+            const left = Math.max(0, Math.min(x, cropOverlay.width - w));
+            const top = Math.max(0, Math.min(y, cropOverlay.height - h));
+            return { x: left, y: top };
+        }
+
+        function updateCropSelection(x, y, w, h) {
+            cropDrawRect(x, y, w, h);
+        }
+
+        function applyCrop() {
+            if (cropRectW === 0 || cropRectH === 0) {
+                if (cropTarget === 'avatar') {
+                    customAvatarImg = cropImageSrc;
+                    updateAvatarUI();
+                } else {
+                    messagesDiv.style.backgroundImage = `url(${cropImageSrc})`;
+                    localStorage.setItem('cartridge_bg_image', cropImageSrc);
+                }
+                closeCropModal();
+                return;
+            }
+            const selX = cropOrigLeft;
+            const selY = cropOrigTop;
+            const selW = cropRectW;
+            const selH = cropRectH;
+            const imgW = cropSourceImg.naturalWidth;
+            const imgH = cropSourceImg.naturalHeight;
+            const displayW = cropSourceImg.clientWidth;
+            const displayH = cropSourceImg.clientHeight;
+            const scaleX = imgW / displayW;
+            const scaleY = imgH / displayH;
+            const cropX = selX * scaleX;
+            const cropY = selY * scaleY;
+            const cropW = selW * scaleX;
+            const cropH = selH * scaleY;
+            const canvas = document.createElement('canvas');
+            canvas.width = cropW;
+            canvas.height = cropH;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(cropSourceImg, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+            const croppedDataUrl = canvas.toDataURL('image/png');
+            if (cropTarget === 'avatar') {
+                customAvatarImg = croppedDataUrl;
+                updateAvatarUI();
+            } else {
+                messagesDiv.style.backgroundImage = `url(${croppedDataUrl})`;
+                localStorage.setItem('cartridge_bg_image', croppedDataUrl);
+            }
+            closeCropModal();
+        }
+
+        function updateAvatarUI() {
+            const sidebarAvatar = document.getElementById('sidebar-avatar');
+            if (sidebarAvatar) {
+                if (customAvatarImg) {
+                    sidebarAvatar.innerHTML = `<img src="${customAvatarImg}" alt="Avatar">`;
+                } else {
+                    sidebarAvatar.textContent = characterIcon;
+                }
+            }
+            // 既存のAIメッセージのアバターも更新
+            const avatars = document.querySelectorAll('.message-wrapper.ai .avatar');
+            avatars.forEach(avatar => {
+                if (customAvatarImg) {
+                    avatar.innerHTML = `<img src="${customAvatarImg}" alt="Avatar">`;
+                }
+            });
+        }
+
+        // クロップドラッグ操作
+        let cropOp = 0; // 0=none, 1=drawing, 2=moving
+        let cropDragX = 0;
+        let cropDragY = 0;
+        let cropDragOX = 0;
+        let cropDragOY = 0;
+        let cropOrigLeft = 0;
+        let cropOrigTop = 0;
+        let cropRectW = 0;
+        let cropRectH = 0;
+
+        function cropGetPos(e) {
+            const r = cropOverlay.getBoundingClientRect();
+            const cx = e.touches ? e.touches[0].clientX : e.clientX;
+            const cy = e.touches ? e.touches[0].clientY : e.clientY;
+            return { x: cx - r.left, y: cy - r.top };
+        }
+
+        function cropDrawRect(x, y, w, h) {
+            cropCanvasCtx.clearRect(0, 0, cropOverlay.width, cropOverlay.height);
+            cropCanvasCtx.fillStyle = 'rgba(0,0,0,0.4)';
+            cropCanvasCtx.fillRect(0, 0, cropOverlay.width, y);
+            cropCanvasCtx.fillRect(0, y + h, cropOverlay.width, cropOverlay.height - y - h);
+            cropCanvasCtx.fillRect(0, y, x, h);
+            cropCanvasCtx.fillRect(x + w, y, cropOverlay.width - x - w, h);
+            cropCanvasCtx.strokeStyle = '#6C5CE7';
+            cropCanvasCtx.lineWidth = 2;
+            cropCanvasCtx.setLineDash([5, 3]);
+            cropCanvasCtx.strokeRect(x, y, w, h);
+            cropCanvasCtx.setLineDash([]);
+        }
+
+        function cropMoveSel(dx, dy) {
+            let l = cropOrigLeft + dx;
+            let t = cropOrigTop + dy;
+            if (l < 0) l = 0;
+            if (t < 0) t = 0;
+            if (l + cropRectW > cropOverlay.width) l = Math.max(0, cropOverlay.width - cropRectW);
+            if (t + cropRectH > cropOverlay.height) t = Math.max(0, cropOverlay.height - cropRectH);
+            cropOrigLeft = l;
+            cropOrigTop = t;
+            cropDrawRect(l, t, cropRectW, cropRectH);
+        }
+
+        function cropMakeSquare(x, y, w, h) {
+            if (cropTarget !== 'avatar') return { x, y, w, h };
+            const s = Math.max(Math.max(w, h), 30);
+            return { x, y, w: s, h: s };
+        }
+
+        function cropInRect(x, y) {
+            return x >= cropOrigLeft && x <= cropOrigLeft + cropRectW &&
+                   y >= cropOrigTop && y <= cropOrigTop + cropRectH;
+        }
+
+        function cropDown(e) {
+            e.preventDefault();
+            const p = cropGetPos(e);
+            if (cropOp === 0) {
+                cropDragX = p.x;
+                cropDragY = p.y;
+                if (cropRectW > 0 && cropInRect(p.x, p.y)) {
+                    cropOp = 2;
+                    cropDragX = p.x;
+                    cropDragY = p.y;
+                    cropOverlay.style.cursor = 'grabbing';
+                } else {
+                    cropOp = 1;
+                    cropDragX = p.x;
+                    cropDragY = p.y;
+                    cropRectW = 0;
+                    cropRectH = 0;
+                }
+            }
+        }
+
+        function cropMove_(e) {
+            if (cropOp === 0) return;
+            e.preventDefault();
+            const p = cropGetPos(e);
+            if (cropOp === 2) {
+                cropMoveSel(p.x - cropDragX, p.y - cropDragY);
+            } else {
+                const x = Math.min(cropDragX, p.x);
+                const y = Math.min(cropDragY, p.y);
+                const w = Math.abs(p.x - cropDragX);
+                const h = Math.abs(p.y - cropDragY);
+                const sq = cropMakeSquare(x, y, w, h);
+                cropOrigLeft = sq.x;
+                cropOrigTop = sq.y;
+                cropRectW = sq.w;
+                cropRectH = sq.h;
+                cropDrawRect(sq.x, sq.y, sq.w, sq.h);
+            }
+        }
+
+        function cropUp() {
+            cropOp = 0;
+            cropOverlay.style.cursor = 'crosshair';
+        }
+
+        // クロップドラッグイベントリスナー
+        cropOverlay.addEventListener('mousedown', cropDown);
+        cropOverlay.addEventListener('mousemove', cropMove_);
+        cropOverlay.addEventListener('mouseup', cropUp);
+        cropOverlay.addEventListener('mouseleave', cropUp);
+        cropOverlay.addEventListener('touchstart', cropDown, { passive: false });
+        cropOverlay.addEventListener('touchmove', cropMove_, { passive: false });
+        cropOverlay.addEventListener('touchend', cropUp);
+
+        cropCancelBtn.addEventListener('click', closeCropModal);
+        cropApplyBtn.addEventListener('click', applyCrop);
+
+        // ESCで閉じる
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && cropModal.classList.contains('active')) {
+                closeCropModal();
+            }
+        });
 
         function addMessage(text, sender) {
             const wrapper = document.createElement('div');
@@ -513,6 +976,82 @@ document.getElementById(loadingId).remove();
                 addMessage(`エラーが発生しました: ${error.message}`, 'ai');
                 chatHistory.pop();
             }
+        }
+
+        // エクスポート・インポート機能
+        exportDataBtn.addEventListener('click', async () => {
+            const messages = await getFromDB(charId);
+            const cartridgeData = {
+                characterName,
+                characterIcon,
+                systemPrompt,
+                chatHistory: chatHistory,
+                messages: messages,
+                timestamp: new Date().toISOString()
+            };
+            const blob = new Blob([JSON.stringify(cartridgeData, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `zineai_export_${characterName}_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        importDataBtn.addEventListener('click', () => {
+            importFileInput.click();
+        });
+
+        importFileInput.addEventListener('change', async (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = async (evt) => {
+                    try {
+                        const data = JSON.parse(evt.target.result);
+                        if (data.messages && Array.isArray(data.messages)) {
+                            await deleteFromDB(charId);
+                            const tx = db.transaction([DB_STORE], 'readwrite');
+                            const store = tx.objectStore(DB_STORE);
+                            data.messages.forEach(msg => store.add(msg));
+                            tx.oncomplete = async () => {
+                                const restoredMessages = await getFromDB(charId);
+                                restoreChatUI(restoredMessages);
+                                addMessage("システム：会話を復元しました。", "ai");
+                            };
+                        } else {
+                            alert('無効なファイル形式です');
+                        }
+                    } catch (err) {
+                        alert('ファイルの読み込みに失敗しました: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+                importFileInput.value = '';
+            }
+        });
+
+        clearDataBtn.addEventListener('click', async () => {
+            if (confirm('すべての会話データを削除しますか？')) {
+                await deleteFromDB(charId);
+                chatHistory = [];
+                messagesDiv.innerHTML = '';
+                addMessage("システム：すべてのデータを削除しました。", "ai");
+            }
+        });
+
+        function restoreChatUI(messages) {
+            messagesDiv.innerHTML = '';
+            chatHistory = [];
+            messages.forEach(msg => {
+                if (msg.role === 'user') {
+                    chatHistory.push({ role: 'user', content: msg.content });
+                    addMessage(msg.content, 'user');
+                } else if (msg.role === 'assistant') {
+                    chatHistory.push({ role: 'assistant', content: msg.content });
+                    addMessage(msg.content, 'ai');
+                }
+            });
         }
 
         sendBtn.addEventListener('click', sendMessage);
