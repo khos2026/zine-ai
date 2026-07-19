@@ -9,7 +9,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; height: 100vh; box-sizing: border-box; gap: 20px;}
-        #sidebar { width: 320px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 15px;}
+        #sidebar { width: 320px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 15px; overflow-y: auto;}
         #chat-container { flex: 1; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; overflow: hidden;}
         
         /* LINE風の背景色 */
@@ -20,8 +20,14 @@
         .message-wrapper.user { align-self: flex-end; flex-direction: row-reverse; }
         .message-wrapper.ai { align-self: flex-start; }
         
-        /* テキストベースのアバターアイコン */
-        .avatar { width: 46px; height: 46px; border-radius: 50%; background-color: white; flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 22px; line-height: 1; white-space: nowrap;}
+        /* アバターアイコン */
+        .avatar { width: 46px; height: 46px; border-radius: 50%; background-color: white; flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 22px; line-height: 1; white-space: nowrap; position: relative;}
+        .avatar img { width: 100%; height: 100%; object-fit: cover; }
+        
+        /* サイドバーのアバター用（ホバーでカメラアイコン表示） */
+        #sidebar-avatar { cursor: pointer; margin: 10px auto; width: 60px; height: 60px; font-size: 30px; transition: opacity 0.2s;}
+        #sidebar-avatar:hover { opacity: 0.8; }
+        #sidebar-avatar::after { content: "📷"; position: absolute; bottom: -2px; right: -2px; font-size: 14px; background: white; border-radius: 50%; padding: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); pointer-events: none;}
         
         /* 吹き出しの中身を縦に並べる用（名前と吹き出し） */
         .ai-content { display: flex; flex-direction: column; gap: 4px; }
@@ -40,12 +46,20 @@
         .bubble p code { background: #f4f4f4; color: #e06c75; padding: 2px 5px; border-radius: 4px; }
         .bubble ul, .bubble ol { margin: 0.5em 0; padding-left: 20px; }
         
-        #input-area { padding: 20px; border-top: 1px solid #eee; display: flex; gap: 10px; background: #fafafa;}
+        #input-area { padding: 20px; border-top: 1px solid #eee; display: flex; gap: 10px; background: #fafafa; align-items: center;}
+        
+        /* マイクボタン */
+        #mic-btn { padding: 0; border-radius: 50%; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; background: #eee; color: #555; border: none; cursor: pointer; transition: background 0.3s; font-size: 20px; flex-shrink: 0;}
+        #mic-btn:hover { background: #ddd; }
+        #mic-btn.recording { background: #ff4757; color: white; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); } }
+        
         input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 24px; outline: none; transition: border-color 0.2s;}
         input[type="text"]:focus { border-color: #6C5CE7;}
-        button { padding: 10px 24px; background: #6C5CE7; color: white; border: none; border-radius: 24px; cursor: pointer; font-weight: bold; transition: background 0.2s;}
-        button:hover { background: #5a4bcf;}
-        button:disabled { background: #ccc; cursor: not-allowed;}
+        button#send-btn { padding: 10px 24px; background: #6C5CE7; color: white; border: none; border-radius: 24px; cursor: pointer; font-weight: bold; transition: background 0.2s; flex-shrink: 0;}
+        button#send-btn:hover { background: #5a4bcf;}
+        button#send-btn:disabled { background: #ccc; cursor: not-allowed;}
+        
         .drop-zone { border: 2px dashed #6C5CE7; background: #f3f0ff; padding: 30px 20px; text-align: center; border-radius: 8px; cursor: pointer; color: #6C5CE7; font-weight: bold; transition: all 0.2s;}
         .drop-zone.dragover { background: #6C5CE7; color: white;}
         label { font-weight: bold; font-size: 0.85em; color: #555; margin-bottom: 4px; display: block;}
@@ -73,10 +87,12 @@
             ここに カートリッジ(.md) を<br>ドラッグ＆ドロップ<br>
         </div>
         
-        <div id="zine-info" style="font-size: 0.85em; color: #555; background: #f8f9fa; padding: 10px; border-radius: 6px;">
+        <div id="zine-info" style="font-size: 0.85em; color: #555; background: #f8f9fa; padding: 10px; border-radius: 6px; text-align: center;">
             挿入中のカートリッジ:<br><strong>なし</strong>
         </div>
+        
         <input type="file" id="file-input" style="display: none;" accept=".md,.txt,.cartridge,.zine">
+        <input type="file" id="avatar-input" style="display: none;" accept="image/*">
     </div>
     
     <div id="chat-container">
@@ -84,6 +100,7 @@
             <!-- 初期メッセージ -->
         </div>
         <div id="input-area">
+            <button id="mic-btn" title="音声入力 (マイク)" disabled>🎤</button>
             <input type="text" id="user-input" placeholder="メッセージを入力..." disabled>
             <button id="send-btn" disabled>送信</button>
         </div>
@@ -93,15 +110,21 @@
         const apiKeyInput = document.getElementById('api-key');
         const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
+        const avatarInput = document.getElementById('avatar-input');
         const zineInfo = document.getElementById('zine-info');
         const messagesDiv = document.getElementById('messages');
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
+        const micBtn = document.getElementById('mic-btn');
 
         let systemPrompt = "";
         let chatHistory = [];
         let characterName = "System";
         let characterIcon = "🤖";
+        let customAvatarImg = null; // 画像アップロード用のBase64データ
+
+        // キャラブレ・長文防止用のメタプロンプト（裏側で強制付与）
+        const META_PROMPT = `\n\n【システムからの絶対遵守命令】\n1. あなたはAIアシスタントではありません。上記の設定されたキャラクターとして完全に振る舞ってください。\n2. ユーザーの質問に対して、長く説明しすぎないでください。回答は必ず3文以内で、キャラクター特有の口調のみを使用してください。\n3. 「申し訳ありません」や「AIとして〜」といったメタ発言は絶対に禁止します。`;
 
         // 初期メッセージの表示
         addMessage("左側のエリアに「カートリッジファイル(.md)」をドラッグ＆ドロップして、キャラクターを召喚してください。", "ai");
@@ -109,8 +132,24 @@
         // トークンをローカルストレージから復元
         const savedKey = localStorage.getItem('sakura_api_key');
         if(savedKey) apiKeyInput.value = savedKey;
-
         apiKeyInput.addEventListener('change', () => localStorage.setItem('sakura_api_key', apiKeyInput.value));
+
+        // 画像アイコンのアップロード処理
+        avatarInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    customAvatarImg = evt.target.result;
+                    // サイドバーのアイコンを更新
+                    const sidebarAvatar = document.getElementById('sidebar-avatar');
+                    if(sidebarAvatar) {
+                        sidebarAvatar.innerHTML = `<img src="${customAvatarImg}" alt="Avatar">`;
+                    }
+                    addMessage("システム：アイコン画像を更新しました。", "ai");
+                }
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
 
         // ドラッグ＆ドロップ処理
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -120,19 +159,63 @@
             dropZone.classList.remove('dragover');
             if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
         });
-        
         dropZone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length) loadFile(e.target.files[0]);
         });
+
+        // 音声入力 (Web Speech API) の設定
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        if (SpeechRecognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'ja-JP';
+            recognition.interimResults = false;
+            
+            recognition.onstart = function() {
+                micBtn.classList.add('recording');
+                userInput.placeholder = "音声を聞き取っています...";
+                userInput.disabled = true;
+            };
+            
+            recognition.onresult = function(event) {
+                const transcript = event.results[0][0].transcript;
+                userInput.value = transcript;
+                sendMessage(); // 音声認識完了と同時に自動送信
+            };
+            
+            recognition.onerror = function(event) {
+                console.error("Speech error", event);
+                alert("音声認識エラー: " + event.error);
+                resetMicUI();
+            };
+            
+            recognition.onend = function() {
+                resetMicUI();
+            };
+            
+            micBtn.addEventListener('click', () => {
+                if (chatHistory.length > 0 && !micBtn.classList.contains('recording')) {
+                    try { recognition.start(); } catch(e) {}
+                }
+            });
+        } else {
+            micBtn.style.display = 'none'; // 未対応ブラウザでは隠す
+        }
+
+        function resetMicUI() {
+            micBtn.classList.remove('recording');
+            userInput.placeholder = "メッセージを入力...";
+            userInput.disabled = false;
+        }
 
         // カートリッジのパース処理
         function loadFile(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 systemPrompt = e.target.result;
+                customAvatarImg = null; // リセット
                 
-                // MDファイルからキャラクター名（最初の# タイトル）を抽出
                 const titleMatch = systemPrompt.match(/^#\s+(.+)$/m);
                 if (titleMatch) {
                     characterName = titleMatch[1].replace(/^(Zine:|Cartridge:)\s*/i, '').trim();
@@ -140,22 +223,32 @@
                     characterName = file.name.replace(/\.[^/.]+$/, "");
                 }
                 
-                // MDファイルからアイコン（Icon: 〇〇）を抽出。絵文字やアスキーアートに対応。
                 const iconMatch = systemPrompt.match(/^Icon:\s*(.+)$/m);
                 if (iconMatch) {
                     characterIcon = iconMatch[1].trim();
                 } else {
-                    characterIcon = "🤖"; // デフォルト
+                    characterIcon = "🤖";
                 }
 
-                zineInfo.innerHTML = `挿入中のカートリッジ:<br><strong style="color:#6C5CE7;">${characterName}</strong><br><span style="font-size:24px;">${characterIcon}</span>`;
+                // サイドバーのアバター生成（クリックで画像アップロード）
+                zineInfo.innerHTML = `挿入中のカートリッジ:<br><strong style="color:#6C5CE7; font-size:1.1em;">${characterName}</strong><br>
+                                      <div id="sidebar-avatar" class="avatar" title="クリックで画像に変更">${characterIcon}</div>`;
+                
+                // アバタークリックイベントのバインド
+                document.getElementById('sidebar-avatar').addEventListener('click', () => {
+                    avatarInput.click();
+                });
+
                 userInput.disabled = false;
                 sendBtn.disabled = false;
+                micBtn.disabled = false;
                 
                 messagesDiv.innerHTML = ''; // 履歴リセット
-                chatHistory = [{ role: 'system', content: systemPrompt }];
                 
-                addMessage(`【${characterName}】をロードしました！\nモデル: llm-jp-3.1-8x13b-instruct4`, 'ai');
+                // メタプロンプトをこっそり結合
+                chatHistory = [{ role: 'system', content: systemPrompt + META_PROMPT }];
+                
+                addMessage(`【${characterName}】をロードしました！\nアイコンをクリックすると手元の画像に差し替えられます。\nマイクボタン🎤を押すと音声で話しかけられます。`, 'ai');
             };
             reader.readAsText(file);
         }
@@ -166,10 +259,13 @@
             wrapper.className = `message-wrapper ${sender}`;
             
             if (sender === 'ai') {
-                // AI側のレイアウト（アイコン＋名前＋吹き出し）
                 const avatar = document.createElement('div');
                 avatar.className = 'avatar';
-                avatar.textContent = characterIcon; // アスキーアートや絵文字を直接テキストで表示
+                if (customAvatarImg) {
+                    avatar.innerHTML = `<img src="${customAvatarImg}" alt="Avatar">`;
+                } else {
+                    avatar.textContent = characterIcon;
+                }
                 wrapper.appendChild(avatar);
 
                 const contentCol = document.createElement('div');
@@ -182,23 +278,21 @@
 
                 const bubble = document.createElement('div');
                 bubble.className = 'bubble';
-                // MarkdownをHTMLに変換し、安全にサニタイズして表示
                 bubble.innerHTML = DOMPurify.sanitize(marked.parse(text));
                 contentCol.appendChild(bubble);
                 
                 wrapper.appendChild(contentCol);
             } else {
-                // ユーザー側のレイアウト（吹き出しのみ、緑色）
                 const bubble = document.createElement('div');
                 bubble.className = 'bubble';
-                bubble.textContent = text; // ユーザー入力はMarkdown変換しない
+                bubble.textContent = text; 
                 wrapper.appendChild(bubble);
             }
 
             messagesDiv.appendChild(wrapper);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
             
-            return wrapper; // loading処理のために要素を返す
+            return wrapper; 
         }
 
         async function sendMessage() {
@@ -214,7 +308,6 @@
             userInput.value = '';
             chatHistory.push({ role: 'user', content: text });
 
-            // ローディング表示
             const loadingId = 'loading-' + Date.now();
             const loadingWrapper = addMessage('思考中...', 'ai');
             loadingWrapper.id = loadingId;
@@ -229,7 +322,7 @@
                     body: JSON.stringify({
                         model: 'llm-jp-3.1-8x13b-instruct4',
                         messages: chatHistory,
-                        max_tokens: 800,
+                        max_tokens: 300, // 長文抑制のためトークンも少し絞る
                         temperature: 0.7
                     })
                 });
