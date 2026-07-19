@@ -16,9 +16,9 @@
             flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; 
             background-color: #f0f2f5; /* デフォルト背景色 */
             background-size: cover;
-            background-position: center;
+            background-position: bottom center;
             background-repeat: no-repeat;
-            background-attachment: fixed;
+            background-attachment: local;
         }
         
         .message-wrapper { display: flex; align-items: flex-start; gap: 10px; max-width: 85%; }
@@ -72,6 +72,15 @@
         /* カスタムボタンスタイル */
         .btn-small { padding: 6px 10px; font-size: 0.8em; border-radius: 4px; cursor: pointer; border: 1px solid #ddd; background: white; color: #333; font-weight: bold;}
         .btn-small:hover { background: #eee; }
+        
+        /* バージョン表示 */
+        #version-tag { position: absolute; bottom: 5px; right: 10px; font-size: 0.7em; color: #aaa; pointer-events: none; z-index: 5;}
+
+        @media (max-width: 768px) {
+            body { padding: 0; flex-direction: column; height: 100vh; overflow: hidden; }
+            #sidebar { width: 100%; order: 2; height: auto; border-radius: 12px 12px 0 0; border-top: 1px solid #eee; box-shadow: 0 -4px 6px rgba(0,0,0,0.05); }
+            #chat-container { width: 100%; order: 1; border-radius: 0; box-shadow: none; }
+        }
     </style>
 </head>
 <body>
@@ -130,6 +139,7 @@
 </div>
     
     <div id="chat-container">
+        <div id="version-tag">ver 1.12</div>
         <div id="messages">
             <!-- 初期メッセージ -->
         </div>
