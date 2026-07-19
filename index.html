@@ -95,11 +95,7 @@
             <input type="file" id="bg-image-input" style="display: none;" accept="image/*">
         </div>
 
-        <div class="control-group">
-            <h3>🤖 固定モデル</h3>
-            <div style="font-size: 0.9em; font-family: monospace; color: #6C5CE7; font-weight: bold;">gpt-oss-120b</div>
-            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">(指示追従・ロールプレイ安定版)</div>
-        </div>
+
         
         <div id="drop-zone" class="drop-zone">
             ここに カートリッジ(.md) を<br>ドラッグ＆ドロップ<br>
@@ -112,7 +108,8 @@
         
         <input type="file" id="file-input" style="display: none;" accept=".md,.txt,.cartridge,.zine">
         <input type="file" id="avatar-input" style="display: none;" accept="image/*">
-    </div>
+    <div id="credits" style="font-size:0.7em; color:#666; text-align:center; margin-top:10px;">© <a href="https://zunko.jp/con_ongen_kiyaku.html" target="_blank">Zunko</a> | <a href="https://tsumugi-official.studio.site/rule" target="_blank">Tsumugi</a> | <a href="https://www.meimeihimari.com/terms-of-use" target="_blank">Meimei Himari</a></div>
+</div>
     
     <div id="chat-container">
         <div id="messages">
@@ -347,6 +344,14 @@
             return wrapper; 
         }
 
+        // Simple TTS using Web Speech API (fallback for VOICEVOX)
+        function speak(text) {
+            if (!('speechSynthesis' in window)) return;
+            const utter = new SpeechSynthesisUtterance(text);
+            utter.lang = 'ja-JP';
+            speechSynthesis.speak(utter);
+        }
+
         async function sendMessage() {
             const text = userInput.value.trim();
             if(!text) return;
@@ -386,9 +391,10 @@
                 const data = await response.json();
                 const aiMsg = data.choices[0].message.content;
                 
-                document.getElementById(loadingId).remove();
-                addMessage(aiMsg, 'ai');
-                chatHistory.push({ role: 'assistant', content: aiMsg });
+document.getElementById(loadingId).remove();
+                 addMessage(aiMsg, 'ai');
+                 speak(aiMsg);
+                 chatHistory.push({ role: 'assistant', content: aiMsg });
 
             } catch (error) {
                 document.getElementById(loadingId).remove();
