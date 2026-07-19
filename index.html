@@ -382,20 +382,19 @@
             return wrapper; 
         }
 
-        // Sakura AI Engine TTS integration with automatic emotion detection
+        // Sakura AI Engine TTS integration using Voicevox-style 2-step synthesis
         async function speak(text) {
             if (!ttsEnabled) return;
             const apiKey = apiKeyInput.value.trim();
             if (!apiKey) return;
 
             try {
-                const model = document.getElementById('tts-model').value;
+                const modelId = document.getElementById('tts-model').value;
                 let style = 'normal';
 
-                // Only these models support emotion styles
+                // 1. Emotion detection for supported models
                 const emotionSupportedModels = ['zundamon', 'ankomon', 'shikokumetan'];
-                
-                if (emotionSupportedModels.includes(model)) {
+                if (emotionSupportedModels.includes(modelId)) {
                     try {
                         const emotionResponse = await fetch('https://api.ai.sakura.ad.jp/v1/chat/completions', {
                             method: 'POST',
@@ -421,11 +420,12 @@
                             }
                         }
                     } catch (e) {
-                        console.warn("Emotion detection failed, falling back to 'normal'", e);
+                        console.warn("Emotion detection failed, fallback to normal", e);
                     }
                 }
 
-                const response = await fetch('https://api.ai.sakura.ad.jp/v1/tts', {
+                // 2. Step 1: Create Audio Query
+                const queryResponse = await fetch('https://api.ai.sakura.ad.jp/tts/v1/audio_query', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -433,14 +433,27 @@
                     },
                     body: JSON.stringify({
                         text: text,
-                        model: model,
+                        modelId: modelId,
                         style: style
                     })
                 });
 
-                if (!response.ok) throw new Error(`TTS Error: ${response.status}`);
+                if (!queryResponse.ok) throw new Error(`Audio Query Error: ${queryResponse.status}`);
+                const queryData = await queryResponse.json();
 
-                const audioBlob = await response.blob();
+                // 3. Step 2: Synthesis
+                const synthResponse = await fetch('https://api.ai.sakura.ad.jp/tts/v1/synthesis', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify(queryData)
+                });
+
+                if (!synthResponse.ok) throw new Error(`Synthesis Error: ${synthResponse.status}`);
+
+                const audioBlob = await synthResponse.blob();
                 const audioUrl = URL.createObjectURL(audioBlob);
                 const audio = new Audio(audioUrl);
                 audio.play();
