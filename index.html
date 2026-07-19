@@ -91,7 +91,12 @@
                 <input type="color" id="bg-color-picker" value="#f0f2f5" style="width: 32px; height: 32px; padding: 0; border: none; cursor: pointer;" title="背景色">
                 <button class="btn-small" id="bg-image-btn" title="背景画像を選択">🖼️ 画像</button>
                 <button class="btn-small" id="bg-reset-btn" title="初期状態に戻す">リセット</button>
-            </div>
+        </div>
+
+        <div class="control-group">
+            <h3>🔊 音声読み上げ</h3>
+            <label><input type="checkbox" id="tts-toggle"> 有効にする</label>
+        </div>
             <input type="file" id="bg-image-input" style="display: none;" accept="image/*">
         </div>
 
@@ -144,6 +149,18 @@
         let characterName = "System";
         let characterIcon = "🤖";
         let customAvatarImg = null; 
+        // TTS toggle handling
+        let ttsEnabled = true;
+        const ttsToggle = document.getElementById('tts-toggle');
+        const savedTts = localStorage.getItem('tts_enabled');
+        if (savedTts !== null) {
+            ttsEnabled = savedTts === 'true';
+            ttsToggle.checked = ttsEnabled;
+        }
+        ttsToggle.addEventListener('change', () => {
+            ttsEnabled = ttsToggle.checked;
+            localStorage.setItem('tts_enabled', ttsEnabled);
+        });
 
         const META_PROMPT = `\n\n【システムからの絶対遵守命令】\n1. あなたはAIアシスタントではありません。上記の設定されたキャラクターとして完全に振る舞ってください。\n2. ユーザーの質問に対して、長く説明しすぎないでください。回答は必ず3文以内で、キャラクター特有の口調のみを使用してください。\n3. 「申し訳ありません」や「AIとして〜」といった発言は絶対に禁止します。`;
 
@@ -346,6 +363,7 @@
 
         // Simple TTS using Web Speech API (fallback for VOICEVOX)
         function speak(text) {
+            if (!ttsEnabled) return;
             if (!('speechSynthesis' in window)) return;
             const utter = new SpeechSynthesisUtterance(text);
             utter.lang = 'ja-JP';
