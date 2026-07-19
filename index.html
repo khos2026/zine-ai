@@ -96,6 +96,21 @@
         <div class="control-group">
             <h3>🔊 音声読み上げ</h3>
             <label><input type="checkbox" id="tts-toggle"> 有効にする</label>
+            <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 5px;">
+                <label style="font-size: 0.75em;">モデル</label>
+                <select id="tts-model" style="width: 100%; padding: 4px; font-size: 0.8em;">
+                    <option value="zunko">ずん子</option>
+                    <option value="tsumugi">つむぎ</option>
+                    <option value="meimei_himari">明媚ひまり</option>
+                </select>
+                <label style="font-size: 0.75em; margin-top: 4px;">スタイル</label>
+                <select id="tts-style" style="width: 100%; padding: 4px; font-size: 0.8em;">
+                    <option value="normal">通常</option>
+                    <option value="happy">喜び</option>
+                    <option value="sad">悲しみ</option>
+                    <option value="angry">怒り</option>
+                </select>
+            </div>
         </div>
             <input type="file" id="bg-image-input" style="display: none;" accept="image/*">
         </div>
@@ -161,6 +176,18 @@
             ttsEnabled = ttsToggle.checked;
             localStorage.setItem('tts_enabled', ttsEnabled);
         });
+
+        const ttsModelSelect = document.getElementById('tts-model');
+        const ttsStyleSelect = document.getElementById('tts-style');
+        
+        const savedModel = localStorage.getItem('tts_model') || 'zunko';
+        const savedStyle = localStorage.getItem('tts_style') || 'normal';
+        
+        ttsModelSelect.value = savedModel;
+        ttsStyleSelect.value = savedStyle;
+        
+        ttsModelSelect.addEventListener('change', () => localStorage.setItem('tts_model', ttsModelSelect.value));
+        ttsStyleSelect.addEventListener('change', () => localStorage.setItem('tts_style', ttsStyleSelect.value));
 
         const META_PROMPT = `\n\n【システムからの絶対遵守命令】\n1. あなたはAIアシスタントではありません。上記の設定されたキャラクターとして完全に振る舞ってください。\n2. ユーザーの質問に対して、長く説明しすぎないでください。回答は必ず3文以内で、キャラクター特有の口調のみを使用してください。\n3. 「申し訳ありません」や「AIとして〜」といった発言は絶対に禁止します。`;
 
@@ -361,13 +388,43 @@
             return wrapper; 
         }
 
-        // Simple TTS using Web Speech API (fallback for VOICEVOX)
-        function speak(text) {
+        // Sakura AI Engine TTS integration
+        async function speak(text) {
             if (!ttsEnabled) return;
-            if (!('speechSynthesis' in window)) return;
-            const utter = new SpeechSynthesisUtterance(text);
-            utter.lang = 'ja-JP';
-            speechSynthesis.speak(utter);
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) return;
+
+            try {
+                const model = document.getElementById('tts-model').value;
+                const style = document.getElementById('tts-style').value;
+
+                const response = await fetch('https://api.ai.sakura.ad.jp/v1/tts', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        model: model,
+                        style: style
+                    })
+                });
+
+                if (!response.ok) throw new Error(`TTS Error: ${response.status}`);
+
+                const audioBlob = await response.blob();
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                audio.play();
+            } catch (error) {
+                console.error("TTS failed:", error);
+                if ('speechSynthesis' in window) {
+                    const utter = new SpeechSynthesisUtterance(text);
+                    utter.lang = 'ja-JP';
+                    speechSynthesis.speak(utter);
+                }
+            }
         }
 
         async function sendMessage() {
