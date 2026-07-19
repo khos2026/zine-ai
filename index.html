@@ -99,9 +99,14 @@
             <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 5px;">
                 <label style="font-size: 0.75em;">モデル</label>
                 <select id="tts-model" style="width: 100%; padding: 4px; font-size: 0.8em;">
+                    <option value="zundamon">ずんだもん</option>
+                    <option value="ankomon">あんこもん</option>
+                    <option value="shikokumetan">四国めたん</option>
                     <option value="zunko">ずん子</option>
                     <option value="tsumugi">つむぎ</option>
                     <option value="meimei_himari">明媚ひまり</option>
+                    <option value="kashirako">かしらこ</option>
+                    <option value="yuzuki">結月ゆかり</option>
                 </select>
             </div>
         </div>
@@ -385,38 +390,41 @@
 
             try {
                 const model = document.getElementById('tts-model').value;
-                
-                // --- Step 1: Auto-detect emotion style ---
                 let style = 'normal';
-                try {
-                    const emotionResponse = await fetch('https://api.ai.sakura.ad.jp/v1/chat/completions', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${apiKey}`
-                        },
-                        body: JSON.stringify({
-                            model: 'gpt-oss-120b',
-                            messages: [
-                                { role: 'system', content: '文章から感情を判定し、"normal", "happy", "sad", "angry" のいずれか1つの単語のみで回答してください。' },
-                                { role: 'user', content: text }
-                            ],
-                            max_tokens: 10,
-                            temperature: 0
-                        })
-                    });
-                    if (emotionResponse.ok) {
-                        const emotionData = await emotionResponse.json();
-                        const detectedStyle = emotionData.choices[0].message.content.trim().toLowerCase();
-                        if (['normal', 'happy', 'sad', 'angry'].includes(detectedStyle)) {
-                            style = detectedStyle;
+
+                // Only these models support emotion styles
+                const emotionSupportedModels = ['zundamon', 'ankomon', 'shikokumetan'];
+                
+                if (emotionSupportedModels.includes(model)) {
+                    try {
+                        const emotionResponse = await fetch('https://api.ai.sakura.ad.jp/v1/chat/completions', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${apiKey}`
+                            },
+                            body: JSON.stringify({
+                                model: 'gpt-oss-120b',
+                                messages: [
+                                    { role: 'system', content: '文章から感情を判定し、"normal", "happy", "sad", "angry" のいずれか1つの単語のみで回答してください。' },
+                                    { role: 'user', content: text }
+                                ],
+                                max_tokens: 10,
+                                temperature: 0
+                            })
+                        });
+                        if (emotionResponse.ok) {
+                            const emotionData = await emotionResponse.json();
+                            const detectedStyle = emotionData.choices[0].message.content.trim().toLowerCase();
+                            if (['normal', 'happy', 'sad', 'angry'].includes(detectedStyle)) {
+                                style = detectedStyle;
+                            }
                         }
+                    } catch (e) {
+                        console.warn("Emotion detection failed, falling back to 'normal'", e);
                     }
-                } catch (e) {
-                    console.warn("Emotion detection failed, falling back to 'normal'", e);
                 }
 
-                // --- Step 2: TTS request ---
                 const response = await fetch('https://api.ai.sakura.ad.jp/v1/tts', {
                     method: 'POST',
                     headers: {
