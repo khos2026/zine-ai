@@ -36,9 +36,12 @@
         /* 背景が暗い画像になった時のために、名前ラベルに少し影をつける */
         .character-name-label { font-size: 0.75em; color: #fff; margin-left: 4px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); font-weight: bold;}
         
-        .bubble { padding: 10px 16px; border-radius: 18px; line-height: 1.5; font-size: 0.95em; position: relative; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
+        .bubble { padding: 10px 16px; border-radius: 18px; line-height: 1.5; font-size: 0.95em; position: relative; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.2); cursor: default; }
         .message-wrapper.user .bubble { background: #8de055; color: #111; border-top-right-radius: 4px; }
         .message-wrapper.ai .bubble { background: white; color: #1c1e21; border-top-left-radius: 4px; }
+        
+        .message-wrapper.ai .bubble:hover { cursor: pointer; box-shadow: 0 2px 8px rgba(108,92,231,0.25); }
+        .message-wrapper.ai .bubble.speaking { background: #f0edff; box-shadow: 0 0 0 2px #6C5CE7; }
         
         .bubble p { margin: 0 0 0.5em 0; }
         .bubble p:last-child { margin: 0; }
@@ -255,7 +258,7 @@
             </div>
         </div>
 
-        <div id="sidebar-version" style="font-size:0.7em; color:#aaa; text-align:center; padding:8px 0 4px; flex-shrink: 0;">v1.12</div>
+        <div id="sidebar-version" style="font-size:0.7em; color:#aaa; text-align:center; padding:8px 0 4px; flex-shrink: 0;">v1.21</div>
     </div>
     
     <input type="file" id="file-input" style="display: none;" accept=".md,.txt,.cartridge,.zine">
@@ -277,7 +280,12 @@
 
     <div id="chat-container">
         <div id="messages">
-            <!-- 初期メッセージ -->
+            <div class="message-wrapper ai">
+                <div class="avatar">🤖</div>
+                <div class="ai-content">
+                    <div class="bubble">カートリッジファイル(.md)をドラッグ＆ドロップして、キャラクターを召喚してください。</div>
+                </div>
+            </div>
         </div>
         <div id="input-area">
             <button id="settings-btn" title="設定">⚙️</button>
@@ -373,8 +381,6 @@
 
         const META_PROMPT = `\n\n【システムからの絶対遵守命令】\n1. あなたはAIアシスタントではありません。上記の設定されたキャラクターとして完全に振る舞ってください。\n2. ユーザーの質問に対して、長く説明しすぎないでください。回答は必ず3文以内で、キャラクター特有の口調のみを使用してください。\n3. 「申し訳ありません」や「AIとして〜」といった発言は絶対に禁止します。`;
 
-        addMessage("カートリッジファイル(.md)をドラッグ＆ドロップして、キャラクターを召喚してください。", "ai");
-
         const savedKey = localStorage.getItem('sakura_api_key');
         if(savedKey) apiKeyInput.value = savedKey;
         apiKeyInput.addEventListener('change', () => localStorage.setItem('sakura_api_key', apiKeyInput.value));
@@ -442,7 +448,10 @@
         const DB_STORE = 'messages';
         const DB_VERSION = 1;
         let db = null;
-        const charId = 'current_character_' + Date.now(); // キャラクター識別子
+        let dbReady = false;
+        const savedCharId = sessionStorage.getItem('zineai_char_id');
+        let charId = savedCharId || ('current_character_' + Date.now());
+        if (!savedCharId) sessionStorage.setItem('zineai_char_id', charId);
 
         // IndexedDB 初期化
         function initDB() {
@@ -457,6 +466,7 @@
                 };
                 request.onsuccess = (e) => {
                     db = e.target.result;
+                    dbReady = true;
                     resolve(db);
                 };
                 request.onerror = (e) => {
@@ -478,26 +488,26 @@
         }
 
         // キャラクターIDで取得
-        function getFromDB(charId) {
+        function getFromDB(cid) {
             return new Promise((resolve, reject) => {
                 if (!db) return reject('DB not initialized');
                 const transaction = db.transaction([DB_STORE], 'readonly');
                 const store = transaction.objectStore(DB_STORE);
                 const index = store.index('charId');
-                const request = index.getAll(charId);
+                const request = index.getAll(cid);
                 request.onsuccess = () => resolve(request.result || []);
                 request.onerror = (e) => reject(e.target.error);
             });
         }
 
         // キャラクターIDで削除
-        function deleteFromDB(charId) {
+        function deleteFromDB(cid) {
             return new Promise((resolve, reject) => {
                 if (!db) return reject('DB not initialized');
                 const transaction = db.transaction([DB_STORE], 'readwrite');
                 const store = transaction.objectStore(DB_STORE);
                 const index = store.index('charId');
-                const request = index.getAll(charId);
+                const request = index.getAll(cid);
                 request.onsuccess = () => {
                     const records = request.result;
                     const deleteTx = db.transaction([DB_STORE], 'readwrite');
@@ -542,11 +552,12 @@
         });
 
         // Remove Speech Recognition logic
-        function loadFile(file) {
+function loadFile(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 systemPrompt = e.target.result;
                 customAvatarImg = null; 
+                isMdLoading = true; // localStorage復元をスキップ
                 
                 const titleMatch = systemPrompt.match(/^#\s+(.+)$/m);
                 if (titleMatch) {
@@ -563,8 +574,12 @@
                 }
 
                 zineInfo.innerHTML = `<h3>挿入中のカートリッジ</h3>
-                                      <strong style="color:#6C5CE7; font-size:1.2em;">${characterName}</strong>
-                                      <div id="sidebar-avatar" class="avatar" title="クリックで画像に変更">${characterIcon}</div>`;
+                                       <strong style="color:#6C5CE7; font-size:1.2em;">${characterName}</strong>
+                                       <div id="sidebar-avatar" class="avatar" title="クリックで画像に変更">${characterIcon}</div>`;
+                
+                if (customAvatarImg) {
+                    updateAvatarUI();
+                }
                 
                 document.getElementById('sidebar-avatar').addEventListener('click', () => {
                     avatarInput.click();
@@ -812,6 +827,124 @@
             }
         });
 
+        // ----- localStorageへの自動保存・復元 -----
+        const LS_KEY = 'zineai_chat_history';
+        const TTS_CACHE_KEY = 'zineai_tts_cache';
+        let savedHistory = null;
+        try { savedHistory = localStorage.getItem(LS_KEY); } catch(e) {}
+        let isMdLoading = false; // MDファイル読み込み中はlocalStorage復元をスキップ
+        let isRestoring = false; // インポート復元中はDB保存をスキップ
+        if (savedHistory) {
+            try {
+                const parsed = JSON.parse(savedHistory);
+                if (parsed.systemPrompt) {
+                    systemPrompt = parsed.systemPrompt;
+                    characterName = parsed.characterName || 'System';
+                    characterIcon = parsed.characterIcon || '🤖';
+                    customAvatarImg = parsed.customAvatarImg || null;
+                    chatHistory = parsed.chatHistory || [];
+                }
+            } catch(e) {}
+        }
+        
+        function saveToLocalStorage() {
+            localStorage.setItem(LS_KEY, JSON.stringify({
+                systemPrompt,
+                characterName,
+                characterIcon,
+                customAvatarImg,
+                chatHistory
+            }));
+        }
+
+        // ----- Sakura TTS キャッシュ再生 -----
+        let currentAudio = null;
+        document.getElementById('messages').addEventListener('click', async (e) => {
+            const bubble = e.target.closest('.message-wrapper.ai .bubble');
+            if (!bubble) return;
+            const text = bubble.textContent.trim();
+            if (!text || text === '思考中...') return;
+            
+            // 既に同じメッセージが再生中なら停止
+            if (currentAudio && currentAudio.dataset.text === text) {
+                currentAudio.pause();
+                currentAudio.remove();
+                currentAudio = null;
+                document.querySelectorAll('.bubble.speaking').forEach(b => b.classList.remove('speaking'));
+                return;
+            }
+            
+            // 既存音频停止
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.remove();
+                currentAudio = null;
+            }
+            document.querySelectorAll('.bubble.speaking').forEach(b => b.classList.remove('speaking'));
+            
+            // キャッシュから取得
+            let cached = null;
+            try { cached = JSON.parse(localStorage.getItem(TTS_CACHE_KEY) || '{}'); } catch(e) {}
+            let audioBlob = null;
+            let audioType = 'audio/wav';
+            if (cached[text]) {
+                const b64 = cached[text];
+                const binary = atob(b64);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                audioBlob = new Blob([bytes], { type: audioType });
+            }
+            
+            // キャッシュになければAPIで取得
+            if (!audioBlob) {
+                try {
+                    const apiKey = apiKeyInput.value.trim();
+                    if (!apiKey) { alert('APIトークンが必要です'); return; }
+                    const modelId = document.getElementById('tts-model').value;
+                    const res = await fetch('https://api.ai.sakura.ad.jp/v1/audio/speech', {
+                        method: 'POST',
+                        headers: { 'Accept': 'audio/wav', 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+                        body: JSON.stringify({ model: modelId, input: text, voice: 'normal', response_format: 'wav' })
+                    });
+                    if (!res.ok) throw new Error(`TTS Error: ${res.status}`);
+                    audioBlob = await res.blob();
+                    // キャッシュに保存
+                    try {
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                            try {
+                                const c = JSON.parse(localStorage.getItem(TTS_CACHE_KEY) || '{}');
+                                c[text] = reader.result.split(',')[1];
+                                localStorage.setItem(TTS_CACHE_KEY, JSON.stringify(c));
+                            } catch(e) {}
+                        };
+                        reader.readAsDataURL(audioBlob);
+                    } catch(e) {}
+                } catch(err) {
+                    console.error('TTS fetch failed:', err);
+                    return;
+                }
+            }
+            
+            // 再生
+            bubble.classList.add('speaking');
+            const url = URL.createObjectURL(audioBlob);
+            const audio = new Audio(url);
+            audio.dataset.text = text;
+            audio.onended = () => {
+                bubble.classList.remove('speaking');
+                currentAudio = null;
+                URL.revokeObjectURL(url);
+            };
+            audio.onerror = () => {
+                bubble.classList.remove('speaking');
+                currentAudio = null;
+                URL.revokeObjectURL(url);
+            };
+            currentAudio = audio;
+            audio.play();
+        });
+
         function addMessage(text, sender) {
             const wrapper = document.createElement('div');
             wrapper.className = `message-wrapper ${sender}`;
@@ -849,6 +982,17 @@
 
             messagesDiv.appendChild(wrapper);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // IndexedDBに保存
+            if (dbReady && !isRestoring) {
+                saveToDB({
+                    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                    charId,
+                    role: sender === 'ai' ? 'assistant' : 'user',
+                    content: text,
+                    timestamp: Date.now()
+                }).catch(e => console.warn('Save to DB failed:', e));
+            }
             
             return wrapper; 
         }
@@ -914,16 +1058,28 @@
                 if (!response.ok) throw new Error(`TTS Error: ${response.status}`);
 
                 const audioBlob = await response.blob();
+                
+                // キャッシュに保存（バイナリ→base64）
+                try {
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                        try {
+                            const c = JSON.parse(localStorage.getItem(TTS_CACHE_KEY) || '{}');
+                            c[text] = reader.result.split(',')[1];
+                            localStorage.setItem(TTS_CACHE_KEY, JSON.stringify(c));
+                        } catch(e) {}
+                    };
+                    reader.readAsDataURL(audioBlob);
+                } catch(e) {}
+                
+                // 自動再生
                 const audioUrl = URL.createObjectURL(audioBlob);
                 const audio = new Audio(audioUrl);
+                audio.onended = () => URL.revokeObjectURL(audioUrl);
+                audio.onerror = () => URL.revokeObjectURL(audioUrl);
                 audio.play();
             } catch (error) {
                 console.error("TTS failed:", error);
-                if ('speechSynthesis' in window) {
-                    const utter = new SpeechSynthesisUtterance(text);
-                    utter.lang = 'ja-JP';
-                    speechSynthesis.speak(utter);
-                }
             }
         }
 
@@ -939,6 +1095,7 @@
             addMessage(text, 'user');
             userInput.value = '';
             chatHistory.push({ role: 'user', content: text });
+            saveToLocalStorage();
 
             const loadingId = 'loading-' + Date.now();
             const loadingWrapper = addMessage('思考中...', 'ai');
@@ -967,9 +1124,10 @@
                 const aiMsg = data.choices[0].message.content;
                 
 document.getElementById(loadingId).remove();
-                 addMessage(aiMsg, 'ai');
-                 speak(aiMsg);
-                 chatHistory.push({ role: 'assistant', content: aiMsg });
+                  addMessage(aiMsg, 'ai');
+                  speak(aiMsg);
+                  chatHistory.push({ role: 'assistant', content: aiMsg });
+                  saveToLocalStorage();
 
             } catch (error) {
                 document.getElementById(loadingId).remove();
@@ -981,12 +1139,16 @@ document.getElementById(loadingId).remove();
         // エクスポート・インポート機能
         exportDataBtn.addEventListener('click', async () => {
             const messages = await getFromDB(charId);
+            let ttsCache = {};
+            try { ttsCache = JSON.parse(localStorage.getItem(TTS_CACHE_KEY) || '{}'); } catch(e) {}
             const cartridgeData = {
                 characterName,
                 characterIcon,
                 systemPrompt,
-                chatHistory: chatHistory,
-                messages: messages,
+                chatHistory,
+                messages,
+                charId,
+                ttsCache,
                 timestamp: new Date().toISOString()
             };
             const blob = new Blob([JSON.stringify(cartridgeData, null, 2)], { type: 'application/json' });
@@ -1010,6 +1172,17 @@ document.getElementById(loadingId).remove();
                     try {
                         const data = JSON.parse(evt.target.result);
                         if (data.messages && Array.isArray(data.messages)) {
+                            // キャラクター情報を復元
+                            if (data.charId) {
+                                charId = data.charId;
+                                sessionStorage.setItem('zineai_char_id', charId);
+                            }
+                            if (data.systemPrompt) systemPrompt = data.systemPrompt;
+                            if (data.characterName) characterName = data.characterName;
+                            if (data.characterIcon) characterIcon = data.characterIcon;
+                            if (data.customAvatarImg) customAvatarImg = data.customAvatarImg;
+                            
+                            // DB更新
                             await deleteFromDB(charId);
                             const tx = db.transaction([DB_STORE], 'readwrite');
                             const store = tx.objectStore(DB_STORE);
@@ -1017,10 +1190,55 @@ document.getElementById(loadingId).remove();
                             tx.oncomplete = async () => {
                                 const restoredMessages = await getFromDB(charId);
                                 restoreChatUI(restoredMessages);
+                                saveToLocalStorage();
+                                // TTSキャッシュも復元
+                                if (data.ttsCache && Object.keys(data.ttsCache).length > 0) {
+                                    try {
+                                        localStorage.setItem(TTS_CACHE_KEY, JSON.stringify(data.ttsCache));
+                                    } catch(e) {}
+                                }
                                 addMessage("システム：会話を復元しました。", "ai");
+                                userInput.disabled = false;
+                                sendBtn.disabled = false;
+                            };
+                        } else if (data.chatHistory && Array.isArray(data.chatHistory)) {
+                            // messagesがない場合はchatHistoryから復元
+                            if (data.charId) {
+                                charId = data.charId;
+                                sessionStorage.setItem('zineai_char_id', charId);
+                            }
+                            if (data.systemPrompt) systemPrompt = data.systemPrompt;
+                            if (data.characterName) characterName = data.characterName;
+                            if (data.characterIcon) characterIcon = data.characterIcon;
+                            if (data.customAvatarImg) customAvatarImg = data.customAvatarImg;
+                            
+                            await deleteFromDB(charId);
+                            const tx = db.transaction([DB_STORE], 'readwrite');
+                            const store = tx.objectStore(DB_STORE);
+                            data.chatHistory.forEach(msg => {
+                                store.add({
+                                    id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+                                    charId,
+                                    role: msg.role,
+                                    content: msg.content,
+                                    timestamp: Date.now()
+                                });
+                            });
+                            tx.oncomplete = async () => {
+                                const restoredMessages = await getFromDB(charId);
+                                restoreChatUI(restoredMessages);
+                                saveToLocalStorage();
+                                if (data.ttsCache && Object.keys(data.ttsCache).length > 0) {
+                                    try {
+                                        localStorage.setItem(TTS_CACHE_KEY, JSON.stringify(data.ttsCache));
+                                    } catch(e) {}
+                                }
+                                addMessage("システム：会話を復元しました。", "ai");
+                                userInput.disabled = false;
+                                sendBtn.disabled = false;
                             };
                         } else {
-                            alert('無効なファイル形式です');
+                            alert('無効なファイル形式です。messagesまたはchatHistoryフィールドが必要です。');
                         }
                     } catch (err) {
                         alert('ファイルの読み込みに失敗しました: ' + err.message);
@@ -1031,16 +1249,19 @@ document.getElementById(loadingId).remove();
             }
         });
 
-        clearDataBtn.addEventListener('click', async () => {
-            if (confirm('すべての会話データを削除しますか？')) {
+clearDataBtn.addEventListener('click', async () => {
+            if (confirm('すべてのデータを削除しますか？')) {
                 await deleteFromDB(charId);
                 chatHistory = [];
                 messagesDiv.innerHTML = '';
+                localStorage.removeItem(LS_KEY);
+                localStorage.removeItem(TTS_CACHE_KEY);
                 addMessage("システム：すべてのデータを削除しました。", "ai");
             }
         });
 
         function restoreChatUI(messages) {
+            isRestoring = true;
             messagesDiv.innerHTML = '';
             chatHistory = [];
             messages.forEach(msg => {
@@ -1050,8 +1271,12 @@ document.getElementById(loadingId).remove();
                 } else if (msg.role === 'assistant') {
                     chatHistory.push({ role: 'assistant', content: msg.content });
                     addMessage(msg.content, 'ai');
+                } else {
+                    // systemメッセージも復元（カートリッジ内容など）
+                    chatHistory.push({ role: 'system', content: msg.content });
                 }
             });
+            isRestoring = false;
         }
 
         sendBtn.addEventListener('click', sendMessage);
