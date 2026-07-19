@@ -4,41 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Cartridge Player</title>
-    <!-- Markdownパーサーとサニタイザーを読み込み -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 20px; display: flex; height: 100vh; box-sizing: border-box; gap: 20px;}
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #e9ecef; margin: 0; padding: 20px; display: flex; height: 100vh; box-sizing: border-box; gap: 20px;}
         #sidebar { width: 320px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; gap: 15px; overflow-y: auto;}
-        #chat-container { flex: 1; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; overflow: hidden;}
+        #chat-container { flex: 1; background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); display: flex; flex-direction: column; overflow: hidden; position: relative;}
         
-        /* LINE風の背景色 */
-        #messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; background-color: #85A3D0;}
+        /* 背景色・画像カスタマイズ対応 */
+        #messages { 
+            flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; 
+            background-color: #f0f2f5; /* デフォルト背景色 */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }
         
-        /* メッセージラッパーのレイアウト */
         .message-wrapper { display: flex; align-items: flex-start; gap: 10px; max-width: 85%; }
         .message-wrapper.user { align-self: flex-end; flex-direction: row-reverse; }
         .message-wrapper.ai { align-self: flex-start; }
         
-        /* アバターアイコン */
         .avatar { width: 46px; height: 46px; border-radius: 50%; background-color: white; flex-shrink: 0; overflow: hidden; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); font-size: 22px; line-height: 1; white-space: nowrap; position: relative;}
         .avatar img { width: 100%; height: 100%; object-fit: cover; }
         
-        /* サイドバーのアバター用（ホバーでカメラアイコン表示） */
         #sidebar-avatar { cursor: pointer; margin: 10px auto; width: 60px; height: 60px; font-size: 30px; transition: opacity 0.2s;}
         #sidebar-avatar:hover { opacity: 0.8; }
         #sidebar-avatar::after { content: "📷"; position: absolute; bottom: -2px; right: -2px; font-size: 14px; background: white; border-radius: 50%; padding: 2px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); pointer-events: none;}
         
-        /* 吹き出しの中身を縦に並べる用（名前と吹き出し） */
         .ai-content { display: flex; flex-direction: column; gap: 4px; }
-        .character-name-label { font-size: 0.75em; color: #fff; margin-left: 4px; text-shadow: 0 1px 1px rgba(0,0,0,0.2); }
+        /* 背景が暗い画像になった時のために、名前ラベルに少し影をつける */
+        .character-name-label { font-size: 0.75em; color: #fff; margin-left: 4px; text-shadow: 0 1px 3px rgba(0,0,0,0.8); font-weight: bold;}
         
-        /* 吹き出しのデザイン */
-        .bubble { padding: 10px 16px; border-radius: 18px; line-height: 1.5; font-size: 0.95em; position: relative; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.15); }
+        .bubble { padding: 10px 16px; border-radius: 18px; line-height: 1.5; font-size: 0.95em; position: relative; word-wrap: break-word; box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
         .message-wrapper.user .bubble { background: #8de055; color: #111; border-top-right-radius: 4px; }
         .message-wrapper.ai .bubble { background: white; color: #1c1e21; border-top-left-radius: 4px; }
         
-        /* Markdown内のスタイル調整 */
         .bubble p { margin: 0 0 0.5em 0; }
         .bubble p:last-child { margin: 0; }
         .bubble pre { background: #282c34; color: #abb2bf; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 0.9em; margin: 0.5em 0; }
@@ -46,25 +47,31 @@
         .bubble p code { background: #f4f4f4; color: #e06c75; padding: 2px 5px; border-radius: 4px; }
         .bubble ul, .bubble ol { margin: 0.5em 0; padding-left: 20px; }
         
-        #input-area { padding: 20px; border-top: 1px solid #eee; display: flex; gap: 10px; background: #fafafa; align-items: center;}
+        #input-area { padding: 20px; border-top: 1px solid #eee; display: flex; gap: 10px; background: white; align-items: center; z-index: 10; box-shadow: 0 -2px 10px rgba(0,0,0,0.02);}
         
-        /* マイクボタン */
-        #mic-btn { padding: 0; border-radius: 50%; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; background: #eee; color: #555; border: none; cursor: pointer; transition: background 0.3s; font-size: 20px; flex-shrink: 0;}
-        #mic-btn:hover { background: #ddd; }
+        #mic-btn { padding: 0; border-radius: 50%; width: 46px; height: 46px; display: flex; align-items: center; justify-content: center; background: #f0f2f5; color: #555; border: none; cursor: pointer; transition: background 0.3s; font-size: 20px; flex-shrink: 0;}
+        #mic-btn:hover { background: #e4e6eb; }
         #mic-btn.recording { background: #ff4757; color: white; animation: pulse 1.5s infinite; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(255, 71, 87, 0); } 100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); } }
         
-        input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 24px; outline: none; transition: border-color 0.2s;}
-        input[type="text"]:focus { border-color: #6C5CE7;}
+        input[type="text"] { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 24px; outline: none; transition: border-color 0.2s; background: #f0f2f5;}
+        input[type="text"]:focus { border-color: #6C5CE7; background: white;}
         button#send-btn { padding: 10px 24px; background: #6C5CE7; color: white; border: none; border-radius: 24px; cursor: pointer; font-weight: bold; transition: background 0.2s; flex-shrink: 0;}
         button#send-btn:hover { background: #5a4bcf;}
         button#send-btn:disabled { background: #ccc; cursor: not-allowed;}
         
-        .drop-zone { border: 2px dashed #6C5CE7; background: #f3f0ff; padding: 30px 20px; text-align: center; border-radius: 8px; cursor: pointer; color: #6C5CE7; font-weight: bold; transition: all 0.2s;}
+        .drop-zone { border: 2px dashed #6C5CE7; background: #f3f0ff; padding: 25px 20px; text-align: center; border-radius: 8px; cursor: pointer; color: #6C5CE7; font-weight: bold; transition: all 0.2s;}
         .drop-zone.dragover { background: #6C5CE7; color: white;}
         label { font-weight: bold; font-size: 0.85em; color: #555; margin-bottom: 4px; display: block;}
         input[type="password"] { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 6px;}
         .title { margin: 0 0 10px 0; color: #6C5CE7; font-size: 1.5em; text-align: center;}
+        
+        .control-group { background: #f8f9fa; padding: 12px; border-radius: 8px; border: 1px solid #eee; }
+        .control-group h3 { margin: 0 0 8px 0; font-size: 0.85em; color: #333;}
+        
+        /* カスタムボタンスタイル */
+        .btn-small { padding: 6px 10px; font-size: 0.8em; border-radius: 4px; cursor: pointer; border: 1px solid #ddd; background: white; color: #333; font-weight: bold;}
+        .btn-small:hover { background: #eee; }
     </style>
 </head>
 <body>
@@ -77,18 +84,30 @@
             <input type="password" id="api-key" placeholder="APIトークンを入力">
         </div>
 
-        <div style="font-size: 0.85em; color: #555; background: #eef; padding: 10px; border-radius: 6px;">
-            <strong>固定モデル:</strong><br>
-            llm-jp-3.1-8x13b-instruct4<br>
-            <span style="font-size: 0.9em; color: #777;">(キャラロールプレイに最適化)</span>
+        <!-- 背景のカスタマイズ -->
+        <div class="control-group">
+            <h3>🎨 背景カスタマイズ</h3>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="color" id="bg-color-picker" value="#f0f2f5" style="width: 32px; height: 32px; padding: 0; border: none; cursor: pointer;" title="背景色">
+                <button class="btn-small" id="bg-image-btn" title="背景画像を選択">🖼️ 画像</button>
+                <button class="btn-small" id="bg-reset-btn" title="初期状態に戻す">リセット</button>
+            </div>
+            <input type="file" id="bg-image-input" style="display: none;" accept="image/*">
+        </div>
+
+        <div class="control-group">
+            <h3>🤖 固定モデル</h3>
+            <div style="font-size: 0.9em; font-family: monospace; color: #6C5CE7; font-weight: bold;">gpt-oss-120b</div>
+            <div style="font-size: 0.75em; color: #777; margin-top: 4px;">(指示追従・ロールプレイ安定版)</div>
         </div>
         
         <div id="drop-zone" class="drop-zone">
             ここに カートリッジ(.md) を<br>ドラッグ＆ドロップ<br>
         </div>
         
-        <div id="zine-info" style="font-size: 0.85em; color: #555; background: #f8f9fa; padding: 10px; border-radius: 6px; text-align: center;">
-            挿入中のカートリッジ:<br><strong>なし</strong>
+        <div id="zine-info" class="control-group" style="text-align: center;">
+            <h3>挿入中のカートリッジ</h3>
+            <strong>なし</strong>
         </div>
         
         <input type="file" id="file-input" style="display: none;" accept=".md,.txt,.cartridge,.zine">
@@ -116,31 +135,72 @@
         const userInput = document.getElementById('user-input');
         const sendBtn = document.getElementById('send-btn');
         const micBtn = document.getElementById('mic-btn');
+        
+        // 背景カスタマイズ要素
+        const bgColorPicker = document.getElementById('bg-color-picker');
+        const bgImageBtn = document.getElementById('bg-image-btn');
+        const bgImageInput = document.getElementById('bg-image-input');
+        const bgResetBtn = document.getElementById('bg-reset-btn');
 
         let systemPrompt = "";
         let chatHistory = [];
         let characterName = "System";
         let characterIcon = "🤖";
-        let customAvatarImg = null; // 画像アップロード用のBase64データ
+        let customAvatarImg = null; 
 
-        // キャラブレ・長文防止用のメタプロンプト（裏側で強制付与）
-        const META_PROMPT = `\n\n【システムからの絶対遵守命令】\n1. あなたはAIアシスタントではありません。上記の設定されたキャラクターとして完全に振る舞ってください。\n2. ユーザーの質問に対して、長く説明しすぎないでください。回答は必ず3文以内で、キャラクター特有の口調のみを使用してください。\n3. 「申し訳ありません」や「AIとして〜」といったメタ発言は絶対に禁止します。`;
+        const META_PROMPT = `\n\n【システムからの絶対遵守命令】\n1. あなたはAIアシスタントではありません。上記の設定されたキャラクターとして完全に振る舞ってください。\n2. ユーザーの質問に対して、長く説明しすぎないでください。回答は必ず3文以内で、キャラクター特有の口調のみを使用してください。\n3. 「申し訳ありません」や「AIとして〜」といった発言は絶対に禁止します。`;
 
-        // 初期メッセージの表示
         addMessage("左側のエリアに「カートリッジファイル(.md)」をドラッグ＆ドロップして、キャラクターを召喚してください。", "ai");
 
-        // トークンをローカルストレージから復元
         const savedKey = localStorage.getItem('sakura_api_key');
         if(savedKey) apiKeyInput.value = savedKey;
         apiKeyInput.addEventListener('change', () => localStorage.setItem('sakura_api_key', apiKeyInput.value));
 
-        // 画像アイコンのアップロード処理
+        // ----- 背景のロードと設定 -----
+        const savedBgColor = localStorage.getItem('cartridge_bg_color');
+        const savedBgImage = localStorage.getItem('cartridge_bg_image');
+        
+        if (savedBgColor) {
+            bgColorPicker.value = savedBgColor;
+            messagesDiv.style.backgroundColor = savedBgColor;
+        }
+        if (savedBgImage) {
+            messagesDiv.style.backgroundImage = `url(${savedBgImage})`;
+        }
+
+        bgColorPicker.addEventListener('input', (e) => {
+            messagesDiv.style.backgroundColor = e.target.value;
+            localStorage.setItem('cartridge_bg_color', e.target.value);
+        });
+
+        bgImageBtn.addEventListener('click', () => bgImageInput.click());
+
+        bgImageInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    const b64 = evt.target.result;
+                    messagesDiv.style.backgroundImage = `url(${b64})`;
+                    localStorage.setItem('cartridge_bg_image', b64);
+                }
+                reader.readAsDataURL(e.target.files[0]);
+            }
+        });
+
+        bgResetBtn.addEventListener('click', () => {
+            messagesDiv.style.backgroundImage = 'none';
+            messagesDiv.style.backgroundColor = '#f0f2f5';
+            bgColorPicker.value = '#f0f2f5';
+            localStorage.removeItem('cartridge_bg_image');
+            localStorage.setItem('cartridge_bg_color', '#f0f2f5');
+        });
+        // ------------------------------
+
         avatarInput.addEventListener('change', (e) => {
             if (e.target.files && e.target.files[0]) {
                 const reader = new FileReader();
                 reader.onload = function(evt) {
                     customAvatarImg = evt.target.result;
-                    // サイドバーのアイコンを更新
                     const sidebarAvatar = document.getElementById('sidebar-avatar');
                     if(sidebarAvatar) {
                         sidebarAvatar.innerHTML = `<img src="${customAvatarImg}" alt="Avatar">`;
@@ -151,7 +211,6 @@
             }
         });
 
-        // ドラッグ＆ドロップ処理
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('dragover'); });
         dropZone.addEventListener('drop', (e) => {
@@ -164,7 +223,6 @@
             if (e.target.files.length) loadFile(e.target.files[0]);
         });
 
-        // 音声入力 (Web Speech API) の設定
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         if (SpeechRecognition) {
@@ -181,11 +239,10 @@
             recognition.onresult = function(event) {
                 const transcript = event.results[0][0].transcript;
                 userInput.value = transcript;
-                sendMessage(); // 音声認識完了と同時に自動送信
+                sendMessage();
             };
             
             recognition.onerror = function(event) {
-                console.error("Speech error", event);
                 alert("音声認識エラー: " + event.error);
                 resetMicUI();
             };
@@ -200,7 +257,7 @@
                 }
             });
         } else {
-            micBtn.style.display = 'none'; // 未対応ブラウザでは隠す
+            micBtn.style.display = 'none';
         }
 
         function resetMicUI() {
@@ -209,12 +266,11 @@
             userInput.disabled = false;
         }
 
-        // カートリッジのパース処理
         function loadFile(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 systemPrompt = e.target.result;
-                customAvatarImg = null; // リセット
+                customAvatarImg = null; 
                 
                 const titleMatch = systemPrompt.match(/^#\s+(.+)$/m);
                 if (titleMatch) {
@@ -230,11 +286,10 @@
                     characterIcon = "🤖";
                 }
 
-                // サイドバーのアバター生成（クリックで画像アップロード）
-                zineInfo.innerHTML = `挿入中のカートリッジ:<br><strong style="color:#6C5CE7; font-size:1.1em;">${characterName}</strong><br>
+                zineInfo.innerHTML = `<h3>挿入中のカートリッジ</h3>
+                                      <strong style="color:#6C5CE7; font-size:1.2em;">${characterName}</strong>
                                       <div id="sidebar-avatar" class="avatar" title="クリックで画像に変更">${characterIcon}</div>`;
                 
-                // アバタークリックイベントのバインド
                 document.getElementById('sidebar-avatar').addEventListener('click', () => {
                     avatarInput.click();
                 });
@@ -243,17 +298,14 @@
                 sendBtn.disabled = false;
                 micBtn.disabled = false;
                 
-                messagesDiv.innerHTML = ''; // 履歴リセット
-                
-                // メタプロンプトをこっそり結合
+                messagesDiv.innerHTML = ''; 
                 chatHistory = [{ role: 'system', content: systemPrompt + META_PROMPT }];
                 
-                addMessage(`【${characterName}】をロードしました！\nアイコンをクリックすると手元の画像に差し替えられます。\nマイクボタン🎤を押すと音声で話しかけられます。`, 'ai');
+                addMessage(`【${characterName}】をロードしました！\nモデル: gpt-oss-120b`, 'ai');
             };
             reader.readAsText(file);
         }
 
-        // LINE風メッセージのレンダリング
         function addMessage(text, sender) {
             const wrapper = document.createElement('div');
             wrapper.className = `message-wrapper ${sender}`;
@@ -320,9 +372,9 @@
                         'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify({
-                        model: 'llm-jp-3.1-8x13b-instruct4',
+                        model: 'gpt-oss-120b', // モデルを gpt-oss-120b に変更
                         messages: chatHistory,
-                        max_tokens: 300, // 長文抑制のためトークンも少し絞る
+                        max_tokens: 300, 
                         temperature: 0.7
                     })
                 });
