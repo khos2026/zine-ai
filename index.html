@@ -278,7 +278,11 @@
             };
             
             recognition.onerror = function(event) {
-                alert("音声認識エラー: " + event.error);
+                if (event.error === 'audio-capture') {
+                    alert("マイクへのアクセスが拒否されたか、マイクが見つかりません。ブラウザの設定を確認してください。");
+                } else {
+                    alert("音声認識エラー: " + event.error);
+                }
                 resetMicUI();
             };
             
