@@ -15,10 +15,20 @@
         #messages { 
             flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 15px; 
             background-color: #f0f2f5; /* デフォルト背景色 */
+            position: relative;
+            z-index: 1;
+        }
+        #bg-image-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             background-size: cover;
             background-position: bottom center;
             background-repeat: no-repeat;
-            background-attachment: local;
+            background-attachment: scroll;
+            pointer-events: none;
+            z-index: 0;
+            transition: opacity 0.2s ease;
         }
         
         .message-wrapper { display: flex; align-items: flex-start; gap: 10px; max-width: 85%; }
@@ -280,6 +290,7 @@
 
     <div id="chat-container">
         <div id="messages">
+            <div id="bg-image-layer"></div>
             <div class="message-wrapper ai">
                 <div class="avatar">🤖</div>
                 <div class="ai-content">
@@ -333,6 +344,7 @@
         const bgImageInput = document.getElementById('bg-image-input');
         const bgResetBtn = document.getElementById('bg-reset-btn');
         const bgOpacitySlider = document.getElementById('bg-opacity-slider');
+        const bgImageLayer = document.getElementById('bg-image-layer');
 
         // 画像切り抜き用要素
         const cropModal = document.getElementById('crop-modal');
@@ -394,13 +406,13 @@
             messagesDiv.style.backgroundColor = savedBgColor;
         }
         if (savedBgImage) {
-            messagesDiv.style.backgroundImage = `url(${savedBgImage})`;
+            bgImageLayer.style.backgroundImage = `url(${savedBgImage})`;
         }
         
         const savedBgOpacity = localStorage.getItem('cartridge_bg_opacity');
         if (savedBgOpacity) {
             bgOpacitySlider.value = savedBgOpacity;
-            messagesDiv.style.opacity = savedBgOpacity / 100;
+            bgImageLayer.style.opacity = savedBgOpacity / 100;
         }
 
         bgColorPicker.addEventListener('input', (e) => {
@@ -410,7 +422,7 @@
 
         bgOpacitySlider.addEventListener('input', (e) => {
             const opacity = e.target.value / 100;
-            messagesDiv.style.opacity = opacity;
+            bgImageLayer.style.opacity = opacity;
             localStorage.setItem('cartridge_bg_opacity', e.target.value);
         });
 
@@ -432,9 +444,9 @@
         });
 
         bgResetBtn.addEventListener('click', () => {
-            messagesDiv.style.backgroundImage = 'none';
+            bgImageLayer.style.backgroundImage = 'none';
+            bgImageLayer.style.opacity = 1;
             messagesDiv.style.backgroundColor = '#f0f2f5';
-            messagesDiv.style.opacity = 1;
             bgColorPicker.value = '#f0f2f5';
             bgOpacitySlider.value = '100';
             localStorage.removeItem('cartridge_bg_image');
@@ -653,7 +665,7 @@ function loadFile(file) {
                     customAvatarImg = cropImageSrc;
                     updateAvatarUI();
                 } else {
-                    messagesDiv.style.backgroundImage = `url(${cropImageSrc})`;
+                    bgImageLayer.style.backgroundImage = `url(${cropImageSrc})`;
                     localStorage.setItem('cartridge_bg_image', cropImageSrc);
                 }
                 closeCropModal();
@@ -683,7 +695,7 @@ function loadFile(file) {
                 customAvatarImg = croppedDataUrl;
                 updateAvatarUI();
             } else {
-                messagesDiv.style.backgroundImage = `url(${croppedDataUrl})`;
+                bgImageLayer.style.backgroundImage = `url(${croppedDataUrl})`;
                 localStorage.setItem('cartridge_bg_image', croppedDataUrl);
             }
             closeCropModal();
